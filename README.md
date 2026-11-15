@@ -1,9 +1,26 @@
-# 🐄 DairyDirect — Admin Portal (refactored to the "Admin sidebar" spec)
+# 🐄 DairyDirect — Admin + Store Manager portals (one repo, one login)
 
-A fully working, heavily animated admin portal for a dairy delivery business across
-Maharashtra — **React 18 + TypeScript + Vite + Tailwind + Radix UI + Framer Motion +
-Recharts + React-Leaflet + Zustand + TanStack Query**. Refactored to the 14-section
-"Admin sidebar" spec; the spec is the single source of truth.
+A fully working, heavily animated dairy ops suite — **React 18 + TypeScript + Vite +
+Tailwind + Radix UI + Framer Motion + Recharts + React-Leaflet + Zustand + TanStack Query**.
+
+**Two portals, one codebase, one login:**
+- `/login` (unified) → role decides the landing: `/admin/dashboard` (Admin) or
+  `/store/dashboard` (Store Manager). Opening the wrong portal → `/403`.
+- Admin portal: the 14-section "Admin sidebar" spec (`src/apps/admin`, URLs `/admin/*`).
+- Store Manager portal: the 9-section "Store manager sidebar" spec
+  (`src/apps/store`, URLs `/store/*`) — Store Dashboard, Orders & Picking (with the
+  picking workspace: claim → scan/batch/pick → unavailable+substitutes → pack → rider
+  handover code), Inventory (Stock / Receive / Low / Expiring / Counts & adjustments with
+  admin-approval flow), Returns & Quality Checks, Rider Applications (document approve/
+  reject → automatic rider approval), COD Cash Deposits, Store Status (pause w/ reason),
+  Staff & Workload (reassign tasks), Notifications & Account.
+- Shared data: one seeded dataset — a manager pausing a store shows up in the admin
+  Stores page; rider document approvals reflect in admin People; store adjustments ≥20
+  units or 'unexplained' create approval requests in admin Approvals & compliance.
+- Store selector appears only when a manager has 2+ stores; every query is scoped by the
+  active store (RLS-style scoping in the mock layer).
+
+See `FOLDER_STRUCTURE.md` for the app/shared/auth layout and the ESLint boundary rule.
 
 ## Quick start
 
@@ -14,13 +31,16 @@ npm run build        # production build
 npm run typecheck    # tsc --noEmit (clean)
 ```
 
-**Demo login** (any password ≥ 4 chars):
+**Demo accounts** (demo panel on the login page; `VITE_DEMO_MODE=true` default in dev):
 
-| Email | Role |
-| --- | --- |
-| `admin@dairydirect.in` | Admin — full portal access |
-| `rohit.kulkarni@dairydirect.in` | Store manager (Colaba Fresh Store) |
-| `lalita.bisht@dairydirect.in` | Support agent |
+| Email | Password | Lands in |
+| --- | --- | --- |
+| `admin@dairydirect.in` | `Admin@123` | Admin portal |
+| `chaitanya.raju@srm.edu.in` | `Store@123` | Store Manager portal (2 stores → selector) |
+
+Other seeded workforce accounts use `Store@123` (managers) / `Support@123` (agents).
+The real role comes from the account record, not the login toggle; a mismatch shows
+"This account is not a Store Manager/Admin account".
 
 Role model: **Admin, Store manager, Rider, Support agent, Customer** (customers are
 records in People, they do not sign into the portal). There is no separate super-admin.
@@ -108,6 +128,17 @@ configuration** on the mock layer; set `VITE_USE_SUPABASE=true` + keys in `.env`
 (see `.env.example`) to point it at Supabase.
 
 ## Needs backend support (built with mocks only)
+
+Store portal specifics:
+- **Store-facing COD reconciliation/history screen** — the COD page records deposits with
+  references and outcomes; a full reconciliation view needs extra backend work.
+- **Live picking queue** — new orders appear via a mock interval (`feed.newOrder` journal op);
+  production needs Supabase Realtime or polling.
+- **Rider document private viewer** — the demo opens a placeholder viewer; production must
+  serve short-lived signed URLs and mask sensitive numbers server-side.
+- **Picking figures** (`open tasks`, `completed today`, `avg picking time`, `deadline
+  breaches`) are computed client-side from the seeded dataset — the backend's store-KPI
+  endpoint should provide them aggregated.
 
 - **Dashboard aggregation** — `getDashboardSummary()` is a client-side mock; the real
   backend should provide one aggregation endpoint.

@@ -4,12 +4,12 @@ import { BrowserRouter } from 'react-router-dom'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
 import App from './App'
-import { queryClient } from '@/lib/queryClient'
-import { TooltipProvider } from '@/components/ui/overlays'
+import { queryClient } from '@/shared/lib/queryClient'
+import { TooltipProvider } from '@/shared/components/ui/overlays'
 // SW registration is deferred (async) so it never blocks first paint
 import('virtual:pwa-register').then((m) => m.registerSW({ immediate: true })).catch(() => {})
 // leaflet CSS is imported inside the on-demand map chunk (components/shared/map)
-import './index.css'
+import '@/shared/styles/index.css'
 
 // Toasts load on demand — nothing about them blocks first paint.
 const Toaster = lazy(() => import('sonner').then((m) => ({ default: m.Toaster })))
