@@ -1,4 +1,6 @@
 {
+  // Base TS config inherited by apps/admin-web and apps/store-web.
+  // Each app adds its own baseUrl/paths (they differ per app).
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
@@ -15,9 +17,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "baseUrl": ".",
-    "paths": { "@/*": ["./src/*"] },
     "types": ["vite/client"]
-  },
-  "include": ["src", "vite.config.ts"]
+  }
 }

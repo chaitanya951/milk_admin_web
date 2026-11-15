@@ -1,191 +1,91 @@
-# 🐄 DairyDirect — Admin + Store Manager portals (one repo, one login)
+# DairyDirect — Monorepo (two standalone web apps)
 
-A fully working, heavily animated dairy ops suite — **React 18 + TypeScript + Vite +
-Tailwind + Radix UI + Framer Motion + Recharts + React-Leaflet + Zustand + TanStack Query**.
+DairyDirect is split into **two independent web apps**, each with its **own login page**, its own folder, port, build and deploy pipeline. Both apps talk to the **same backend** (shared mock database / one Supabase project) so data stays connected: a store manager pauses their store → the Admin sees it paused; a manager approves rider documents → Admin People shows the status; a manager adjusts stock → Admin Inventory and Approvals update.
 
-**Two portals, one codebase, one login:**
-- `/login` (unified) → role decides the landing: `/admin/dashboard` (Admin) or
-  `/store/dashboard` (Store Manager). Opening the wrong portal → `/403`.
-- Admin portal: the 14-section "Admin sidebar" spec (`src/apps/admin`, URLs `/admin/*`).
-- Store Manager portal: the 9-section "Store manager sidebar" spec
-  (`src/apps/store`, URLs `/store/*`) — Store Dashboard, Orders & Picking (with the
-  picking workspace: claim → scan/batch/pick → unavailable+substitutes → pack → rider
-  handover code), Inventory (Stock / Receive / Low / Expiring / Counts & adjustments with
-  admin-approval flow), Returns & Quality Checks, Rider Applications (document approve/
-  reject → automatic rider approval), COD Cash Deposits, Store Status (pause w/ reason),
-  Staff & Workload (reassign tasks), Notifications & Account.
-- Shared data: one seeded dataset — a manager pausing a store shows up in the admin
-  Stores page; rider document approvals reflect in admin People; store adjustments ≥20
-  units or 'unexplained' create approval requests in admin Approvals & compliance.
-- Store selector appears only when a manager has 2+ stores; every query is scoped by the
-  active store (RLS-style scoping in the mock layer).
+| App | Folder | Port | Login | Demo account (only when `VITE_DEMO_MODE=true`) |
+|---|---|---|---|---|
+| **Admin Portal** | `apps/admin-web` | 5173 | `/login` (admin-themed) | `admin@dairydirect.in` / `Admin@123` |
+| **Store Manager Portal** | `apps/store-web` | 5174 | `/login` (store-manager-themed) | `chaitanya.raju@srm.edu.in` / `Store@123` |
 
-See `FOLDER_STRUCTURE.md` for the app/shared/auth layout and the ESLint boundary rule.
+There is **no unified login**: no role toggle, no cross-portal redirect, no `/admin/*` or `/store/*` URL prefixes, no 403 cross-portal page. Each app accepts **only its own role** — the role comes from the account record (`profiles.role` / workforce record), never from the UI. Signing in to one app never signs in to (or out of) the other: separate Zustand stores, separate session keys (`dd_admin_session`, `dd_store_session`), separate guards, idle timeouts and logout.
 
-## Quick start
+## Repository layout
+
+```
+dairydirect/
+├── README.md / FOLDER_STRUCTURE.md     ← docs (this file + full tree)
+├── package.json                        ← npm workspaces + root scripts
+├── .eslintrc.cjs                       ← import-boundary enforcement (fails build)
+├── .env.example
+├── apps/
+│   ├── admin-web/                      ← ADMIN WEB (standalone Vite + React + TS)
+│   │   ├── package.json  vite.config.ts  index.html  tsconfig.json
+│   │   ├── tailwind.config.ts  postcss.config.js  .env.example
+│   │   └── src/ (login/ layout/ pages/ api/ components/ + App/routes/main)
+│   └── store-web/                      ← STORE MANAGER WEB (standalone Vite + React + TS)
+│       ├── package.json  vite.config.ts  index.html  tsconfig.json
+│       ├── tailwind.config.ts  postcss.config.js  .env.example
+│       └── src/ (login/ layout/ pages/ api/ + App/routes/main)
+├── packages/
+│   └── shared/                         ← used by BOTH apps (no app-specific logic)
+│       └── src/ (ui/ styles/ lib/ services/ mock-db/ types/ hooks/ assets/)
+└── supabase/
+    ├── migrations/ (000_shared, 100_admin, 200_store)
+    ├── policies/   (admin_policies.sql, store_policies.sql)
+    └── seed/       (shared.sql, admin.sql, store.sql)
+```
+
+See [FOLDER_STRUCTURE.md](./FOLDER_STRUCTURE.md) for the complete annotated tree.
+
+## Run
 
 ```bash
-npm install
-npm run dev          # → http://localhost:5173
-npm run build        # production build
-npm run typecheck    # tsc --noEmit (clean)
+npm install          # installs workspaces
+
+npm run dev          # BOTH apps (concurrently): 5173 + 5174
+npm run dev:admin    # admin-web only   → http://localhost:5173
+npm run dev:store    # store-web only   → http://localhost:5174
 ```
 
-**Demo accounts** (demo panel on the login page; `VITE_DEMO_MODE=true` default in dev):
+## Build, quality gates, preview
 
-| Email | Password | Lands in |
-| --- | --- | --- |
-| `admin@dairydirect.in` | `Admin@123` | Admin portal |
-| `chaitanya.raju@srm.edu.in` | `Store@123` | Store Manager portal (2 stores → selector) |
+```bash
+npm run build        # build both (each app lints itself first)
+npm run build:admin  # admin-web → apps/admin-web/dist
+npm run build:store  # store-web → apps/store-web/dist
 
-Other seeded workforce accounts use `Store@123` (managers) / `Support@123` (agents).
-The real role comes from the account record, not the login toggle; a mismatch shows
-"This account is not a Store Manager/Admin account".
+npm run lint         # ESLint both apps (import boundary = error)
+npm run typecheck    # tsc --noEmit both apps
+npm run test         # vitest both apps (auth boundary + routes smoke tests)
 
-Role model: **Admin, Store manager, Rider, Support agent, Customer** (customers are
-records in People, they do not sign into the portal). There is no separate super-admin.
-
-## Sidebar (exactly 14 sections)
-
-1. **Dashboard** (`/dashboard`) — date + store filter, order pipeline KPIs, store status
-   (online/paused/high picking backlog), pending counts linking pre-filtered pages,
-   low-stock & expiring alerts, reconciliation issues, failed jobs, and THREE separate
-   financial KPIs: Sales, Wallet top-ups, Refunds (never combined).
-   Aggregation via one mock service: `getDashboardSummary(range, storeId)` in
-   `src/data/selectors.ts` — swap for a backend endpoint later.
-2. **Stores & service areas** (`/stores`) — store CRUD (location, capacity,
-   online/paused, COD availability), detail drawer with weekly hours editor + holiday
-   calendar + manager assignment, Cities & zones with polygon editing on Leaflet
-   (`PolygonEditor`), zone priorities, legal entities linked to stores. A store manager
-   can pause/resume their own store; the admin controls wider config (noted in the UI).
-3. **Products & pricing** (`/products`) — categories & brands, variants with SKU/barcode,
-   publish/unpublish, per-store availability + price override, tax & shelf-life,
-   CSV import wizard (upload → dry run → error table → confirm), sensitive changes
-   (price/publish) create approval requests and show "Pending approval" on the item.
-4. **Inventory** (`/inventory`) — cross-store stock comparison, low-stock list,
-   movements/adjustments log with filters, shelf-life + expiring batches, discrepancy
-   view (damage/expiry/unusual adjustments flagged). Oversight only — receiving/counting/
-   quality handling belongs to store managers (not built, per spec).
-5. **Orders & delivery** (`/orders`, `/orders/:id`) — filters by store/customer/status/date;
-   detail with items, payment attempts, refunds (status exactly as returned) and timeline;
-   eligibility-gated actions with reason tooltips (hold/release, cancel w/ required reason,
-   request correction, reassign rider before pickup, resolve wrong-address report, reset
-   delivery-code lock); "Live map" tab (all riders + animated delivery route).
-6. **People** (`/people`) — 3 tabs: Customers (search/status, block/unblock, deep links to
-   orders & tickets — no mega-profile), Rider applications (read-only documents;
-   "Reviewed by assigned store manager"), Workforce (invite store-manager/rider/support
-   accounts, assign managers to stores, block/unblock, password reset, role-change
-   workflow for admin access via approvals).
-7. **Payments, refunds & wallets** (`/payments`) — payment attempts (captured/failed),
-   refunds with exact statuses (Requested/Processing/Paid/Failed) + manual refund
-   evidence (reference + file), reconciliation findings, wallet ledger + authorized
-   adjustments (reason required), invoice-render failures with gated Retry.
-8. **Rider payouts & COD** (`/payouts`) — payout records, approve when `canApprove`,
-   record payment reference/evidence AFTER paid ("Manual settlement is recorded here;
-   no bank transfer is initiated."), corrections & COD offsets.
-9. **Offers & notifications** (`/offers`) — coupons (percentage/flat/free delivery with
-   min order, validity, usage limits, eligible stores & products), push campaigns
-   (audiences or selected users, preview, status list), My notifications (the admin's own
-   bell feed).
-10. **Subscriptions** (`/subscriptions`) — configuration only: subscribable products,
-    delivery slots, subscription holidays, generation runs with inspect/retry,
-    subscription settings. Shows a "Subscriptions are currently disabled" banner when
-    the feature flag is off.
-11. **Support & reviews** (`/support`) — tickets with respond/status/saved responses/
-    internal notes/authorized attachments viewer, refund request from eligible
-    order-related tickets (creates it in Payments), rating moderation queue.
-12. **Reports & exports** (`/reports`) — exactly 6 tabs: Catalog & stock, Financial
-    activity, Picking & store performance, Rider activity, Subscriptions, Support
-    activity; preview table → Export creates a job (Pending/Complete/Failed) with an
-    authorized download only when Complete.
-13. **Approvals & compliance** (`/approvals`) — queue (pending/completed/rejected/expired)
-    with `canApprove`-gated approve/reject + reason when not allowed, fraud findings,
-    payment-reconciliation findings, data-erasure requests and legal holds.
-14. **Settings & system** (`/settings`) — feature toggles (COD, wallets, subscriptions —
-    effective instantly across the app), business rules (fees, order limits, rider
-    requirements, dispatch settings), failed background jobs with recovery actions,
-    operational notifications and invoice-render failures.
-
-Top bar: global search + ⌘K/Ctrl+K palette (stores, products, orders, customers, riders,
-tickets), notification bell (My notifications), user menu with the light/dark/system
-toggle. The signed-in user is labeled **Admin** everywhere.
-
-## Data model & persistence
-
-`src/data/seed.ts` builds one deterministic dataset (demo clock: 24 Jan 2026, 11:05):
-8 stores / 13 zones / 3 legal entities / 12 products · 26 variants / ~480 customers /
-12 riders / 24 workforce accounts / 1,248 orders (identical across Orders, Payments,
-Payouts, Support and Reports) / payment attempts / refunds with exact statuses /
-wallet ledger / reconciliation + fraud findings / 48 rider payouts incl. corrections and
-COD offsets / coupons & campaigns / subscription runs / tickets & ratings / approvals,
-erasure requests and legal holds / export jobs / background jobs / feature flags &
-business rules. Mutations persist through a journal in localStorage
-(`dairydirect-journal-v2`); Settings & system → restore via `resetDemoData()`.
-
-Supabase: `supabase/schema.sql` (all tables + RLS: staff read, admin-only writes via
-`is_admin()`) and `supabase/seed.sql` (reference data). The app runs with **zero
-configuration** on the mock layer; set `VITE_USE_SUPABASE=true` + keys in `.env`
-(see `.env.example`) to point it at Supabase.
-
-## Needs backend support (built with mocks only)
-
-Store portal specifics:
-- **Store-facing COD reconciliation/history screen** — the COD page records deposits with
-  references and outcomes; a full reconciliation view needs extra backend work.
-- **Live picking queue** — new orders appear via a mock interval (`feed.newOrder` journal op);
-  production needs Supabase Realtime or polling.
-- **Rider document private viewer** — the demo opens a placeholder viewer; production must
-  serve short-lived signed URLs and mask sensitive numbers server-side.
-- **Picking figures** (`open tasks`, `completed today`, `avg picking time`, `deadline
-  breaches`) are computed client-side from the seeded dataset — the backend's store-KPI
-  endpoint should provide them aggregated.
-
-- **Dashboard aggregation** — `getDashboardSummary()` is a client-side mock; the real
-  backend should provide one aggregation endpoint.
-- **Live rider map** — the Orders "Live map" tab animates a pseudo-route locally; a true
-  fleet view needs a dedicated admin-facing backend (live locations/websockets).
-- **Full customer profile** — People shows basic details + deep links by design; a
-  combined 360° profile needs more read APIs.
-- **COD reconciliation dashboard** — COD appears inside payouts and reports only, per
-  spec; a standalone reconciliation dashboard needs backend aggregation.
-- **Browse-all ratings** — Support shows the moderation queue; browsing all ratings
-  needs additional read APIs.
-- Store slots/holidays edits persist page-locally in the demo (localStorage
-  `dd-sub-config`); production needs journal/API rows.
-
-## Structure
-
-```
-src/
-  components/ui/        base.tsx · overlays.tsx · form.tsx
-  components/shared/    KpiCard · DataTable+Pagination · charts · misc (PageHeader, pills, tabs) ·
-                        domain.tsx (ApprovalBadge, StatusTimeline, ExportJobRow, ApprovalCard,
-                        CsvImportWizard) · map/ (LazyMap, MapInner, PolygonEditor)
-  data/                 seed.ts · selectors.ts (incl. getDashboardSummary) · api.ts · rng.ts
-  hooks/                queries.ts · mutations.ts · flags.ts · misc.ts
-  illustrations/        scenes.tsx (all animated headers incl. new Products/Inventory/
-                        Payments/Payouts/Support/Approvals/People scenes) · avatars · productIcons · Logo
-  layouts/              AppLayout · Sidebar (14 items) · Topbar (bell + Admin menu) · CommandPalette
-  pages/                Dashboard · Stores · Products · Inventory · Orders(+Detail) · People ·
-                        Payments · Payouts · Offers · Subscriptions · Support · Reports ·
-                        Approvals · Settings · Login · NotFound
-  services/             exports.ts (xlsx/csv) · supabaseClient.ts
-  store/                db.ts (journal persistence) · auth.ts
-supabase/               schema.sql · seed.sql
+npm run preview:admin
+npm run preview:store
 ```
 
-## Removed in the refactor (no leftovers)
+## Import boundary (enforced)
 
-Overview dashboard, Farms & farm verification, Cities "expansion" planning + coverage
-gauges + import-zones hype cards, Delivery page (merged; live map became a tab), the 28-
-permission matrix + roles/access cards + audit-log widget, old roles (Super Admin,
-Operations Admin, Farm Manager, City Manager, Delivery Lead, Finance Admin), platform
-commission + settlement summary + revenue-by-category donut, combined "Net revenue",
-generic "Assign Delivery", delivery performance donut/gauges/top-partners leaderboard,
-old offers (combo/bundle, subscription offers, Refer & Earn, campaign analytics,
-marketing banner), per-customer subscription management + plan marketing cards +
-renewal-revenue KPI, old report tabs (Business/Sales/Farm/Delivery/Customer) + Key
-Insights + revenue-by-city map + Top farms + Report Center, Settings business profile/
-cover upload/integration cards (Razorpay/Twilio/Supabase)/security & 2FA/password
-policy/sessions/system preferences/data & backup/notification toggles, and the
-MaharashtraMap/landmark/razorpay/twilio modules.
+`apps/admin-web` and `apps/store-web` **never import from each other**. Both import only from `@dairydirect/shared/*` (source-mapped to `packages/shared/src`). This is enforced three ways:
+
+1. **ESLint `no-restricted-imports`** in `.eslintrc.cjs` — violations are **errors**, and each app's `build` script runs lint first, so a violating import **fails the build**.
+2. Vite aliases + tsconfig paths only expose `@dairydirect/shared/*` — there is no alias pointing at the other app.
+3. Smoke tests (`npm run test`) assert the auth boundary: an admin account cannot sign in to store-web and a store manager cannot sign in to admin-web (`"This account can't sign in here"`).
+
+## Demo mode
+
+Demo credentials appear (and pre-fill) on the login pages **only** when `VITE_DEMO_MODE=true` in the app's `.env`. Never enable it in production.
+
+## Supabase
+
+Both apps run on the built-in deterministic mock layer by default (`VITE_USE_SUPABASE=false`). To switch to Supabase, set the **same** project URL/anon key in **both** apps' `.env` (data stays connected via the shared project). Apply `supabase/migrations/*.sql` in order, then `policies/*.sql`, then `seed/*.sql`. RLS model:
+
+- **admins** can read everything (and mutate master data);
+- **store managers** only rows for their assigned `store_id`s (`is_assigned_store_manager()`).
+
+## Deploy
+
+Deploy each app as its own project (Vercel/Netlify):
+
+- **admin-web** → root directory `apps/admin-web`, build `npm run build`, output `apps/admin-web/dist`
+- **store-web** → root directory `apps/store-web`, build `npm run build`, output `apps/store-web/dist`
+
+More detail in each app's README: [apps/admin-web/README.md](./apps/admin-web/README.md) · [apps/store-web/README.md](./apps/store-web/README.md)

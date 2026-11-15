@@ -1,0 +1,25 @@
+{
+  "name": "@dairydirect/shared",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Shared design system, mock database, types and services for the DairyDirect admin-web and store-web apps. No app-specific logic lives here.",
+  "main": "./src/index.ts",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.56.2",
+    "framer-motion": "^11.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "recharts": "^2.12.7",
+    "xlsx": "^0.18.5",
+    "zustand": "^4.5.5"
+  }
+}
